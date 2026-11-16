@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Semnal — centrul de comandă al cetățenilor. Raportează problemele din oraș pe hartă și urmărește-le în timp real.">
+  <title>Semnal — Harta problemelor din oraș</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ================= BARA DE SUS ================= -->
+  <header class="bara-sus">
+    <a href="#" class="logo" aria-label="Semnal, pagina principală">
+      <span class="logo-radar" aria-hidden="true"><i></i></span>
+      SEMNAL<span class="logo-versiune">/ București</span>
+    </a>
+    <nav class="meniu" aria-label="Navigare principală">
+      <a href="#harta-sectiune" class="activ">Hartă</a>
+      <a href="#raport">Raport de oraș</a>
+      <a href="#cum">Cum funcționează</a>
+      <a href="#quiz">Quiz</a>
+      <a href="#intrebari">Întrebări</a>
+    </nav>
+    <div class="bara-dreapta">
+      <span class="live" title="Sesizări deschise acum"><i aria-hidden="true"></i>LIVE · <b id="live-deschise">0</b> deschise</span>
+      <button type="button" class="btn btn-semnal" data-raporteaza>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Raportează
+      </button>
+      <button type="button" class="btn-profil" id="deschide-profil" aria-label="Deschide profilul">
+        <span class="avatar avatar-tu">TU</span>
+        <span class="profil-text"><span id="insigna">Începător</span><b><span id="puncte">0</span> pct</b></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= SCENA: HARTA ================= -->
+  <section id="harta-sectiune" class="scena" aria-label="Harta sesizărilor">
+    <div id="harta" class="harta" role="application" aria-label="Harta interactivă"></div>
+
+    <!-- panoul cu lista -->
+    <aside class="panou-lista sticla" aria-label="Lista sesizărilor">
+      <div class="panou-cap">
+        <div>
+          <span class="eticheta-mono">// sesizări</span>
+          <h2>Ce se întâmplă în oraș</h2>
+        </div>
+        <span class="contor-mare" id="rezultate">0</span>
+      </div>
+
+      <div class="cautare">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="cautare" placeholder="Caută stradă, cartier, problemă" aria-label="Caută sesizări">
+        <kbd>/</kbd>
+      </div>
+
+      <div class="segment" id="segment-status" role="group" aria-label="Filtrează după status">
+        <button type="button" class="activ" data-status="toate">Toate</button>
+        <button type="button" data-status="nou"><i class="punct st-nou"></i>Noi</button>
+        <button type="button" data-status="lucru"><i class="punct st-lucru"></i>În lucru</button>
+        <button type="button" data-status="rezolvat"><i class="punct st-rezolvat"></i>Rezolvate</button>
+      </div>
+
+      <div class="filtre" id="filtre" role="group" aria-label="Filtrează după categorie"></div>
+
+      <div class="unelte-lista">
+        <select id="sortare" aria-label="Sortează">
+          <option value="recente">Cele mai recente</option>
+          <option value="confirmate">Cele mai confirmate</option>
+          <option value="vechi">Nerezolvate de mult</option>
+          <option value="gravitate">După gravitate</option>
+        </select>
+        <button type="button" class="comutator" id="doar-urmarite" aria-pressed="false" title="Doar sesizările urmărite">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button type="button" class="comutator" id="doar-ale-mele" aria-pressed="false" title="Doar sesizările mele">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/></svg>
+        </button>
+      </div>
+
+      <div id="lista" class="lista" aria-live="polite"></div>
+      <div id="gol" class="gol hidden">
+        <span class="eticheta-mono">0 rezultate</span>
+        <p>Nicio sesizare nu corespunde filtrelor.</p>
+        <button type="button" class="btn btn-contur" id="reseteaza-filtre">Resetează filtrele</button>
+      </div>
+    </aside>
+
+    <!-- indicatori plutitori -->
+    <div class="kpi-plutitori" aria-label="Indicatori principali">
+      <div class="kpi"><span class="eticheta-mono">deschise</span><b id="kpi-deschise">0</b></div>
+      <div class="kpi"><span class="eticheta-mono">rezolvate</span><b id="kpi-rezolvate">0</b></div>
+      <div class="kpi"><span class="eticheta-mono">timp mediu</span><b><span id="kpi-zile">0</span><small>zile</small></b></div>
+    </div>
+
+    <!-- control straturi -->
+    <div class="control-straturi sticla" role="group" aria-label="Stilul hărții">
+      <button type="button" class="activ" data-strat="intunecat">Întunecat</button>
+      <button type="button" data-strat="strada">Stradă</button>
+      <button type="button" data-strat="satelit">Satelit</button>
+      <span class="separator" aria-hidden="true"></span>
+      <button type="button" id="comuta-densitate" aria-pressed="false">Densitate</button>
+    </div>
+
+    <!-- mesaj de prezentare -->
+    <div class="intro sticla" id="intro">
+      <button type="button" class="btn-x mic" id="ascunde-intro" aria-label="Ascunde mesajul">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+      <span class="eticheta-mono">// semnal.ro</span>
+      <h1>Orașul, în timp real.</h1>
+      <p>Vezi o groapă, un stâlp stins sau gunoi abandonat? Pune-l pe hartă. Vecinii confirmă, iar tu urmărești pas cu pas cum se rezolvă.</p>
+      <div class="intro-actiuni">
+        <button type="button" class="btn btn-semnal" data-raporteaza>Raportează o problemă</button>
+        <a href="#raport" class="btn btn-contur">Raport de oraș</a>
+      </div>
+    </div>
+
+    <div class="legenda sticla" aria-hidden="true">
+      <span><i class="punct st-nou"></i>nouă</span>
+      <span><i class="punct st-lucru"></i>în lucru</span>
+      <span><i class="punct st-rezolvat"></i>rezolvată</span>
+    </div>
+
+    <div class="banner-alegere hidden" id="banner-alegere" role="status">
+      <span class="tinta" aria-hidden="true"></span>
+      <span>Apasă pe hartă exact unde este problema</span>
+      <button type="button" class="btn btn-contur mic" id="anuleaza-alegere">Anulează</button>
+    </div>
+
+    <div class="harta-eroare hidden" id="harta-eroare">
+      <span class="eticheta-mono">eroare: hartă indisponibilă</span>
+      <strong>Harta nu s-a putut încărca</strong>
+      <span>Verifică conexiunea la internet. Lista sesizărilor funcționează în continuare.</span>
+    </div>
+  </section>
+
+  <!-- ================= RAPORT DE ORAȘ ================= -->
+  <section id="raport" class="sectiune">
+    <div class="container">
+      <div class="sectiune-cap">
+        <span class="eticheta-mono">// raport de oraș</span>
+        <h2>Ce se rezolvă și ce mai așteaptă</h2>
+        <p>Toate cifrele se actualizează imediat ce cineva raportează, confirmă sau închide o sesizare.</p>
+      </div>
+
+      <div class="tablou">
+        <div class="carta kpi-carta">
+          <span class="eticheta-mono">sesizări totale</span>
+          <b id="stat-total" data-numar>0</b>
+          <div class="sparkline" id="spark-total" aria-hidden="true"></div>
+          <span class="nota-mono">ultimele 14 zile</span>
+        </div>
+        <div class="carta kpi-carta">
+          <span class="eticheta-mono">rezolvate</span>
+          <b id="stat-rezolvate" data-numar>0</b>
+          <div class="bara-procent"><div id="bara-rezolvate"></div></div>
+          <span class="nota-mono" id="procent-text">0% din total</span>
+        </div>
+        <div class="carta kpi-carta">
+          <span class="eticheta-mono">confirmări</span>
+          <b id="stat-confirmari" data-numar>0</b>
+          <span class="nota-mono" id="medie-confirmari">în medie 0 pe sesizare</span>
+        </div>
+        <div class="carta kpi-carta">
+          <span class="eticheta-mono">timp mediu de rezolvare</span>
+          <b><span id="stat-zile" data-numar>0</span><small> zile</small></b>
+          <span class="nota-mono">de la trimitere la rezolvare</span>
+        </div>
+
+        <div class="carta carta-lata">
+          <div class="carta-cap"><h3>Pe categorii</h3><span class="nota-mono">plin = rezolvate</span></div>
+          <div class="bare" id="bare-categorii"></div>
+        </div>
+        <div class="carta">
+          <div class="carta-cap"><h3>Stadiu</h3></div>
+          <div class="inel-zona">
+            <div class="inel" id="inel"><div class="inel-centru"><b id="procent-rezolvate">0%</b><span>rezolvate</span></div></div>
+            <ul class="inel-legenda" id="inel-legenda"></ul>
+          </div>
+        </div>
+
+        <div class="carta carta-lata">
+          <div class="carta-cap"><h3>Cartiere</h3><span class="nota-mono">sortat după sesizări deschise</span></div>
+          <table class="tabel" id="tabel-cartiere">
+            <thead><tr><th>Cartier</th><th>Deschise</th><th>Rezolvate</th><th>Confirmări</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="carta">
+          <div class="carta-cap"><h3>Rezolvate recent</h3></div>
+          <ol class="flux" id="rezolvate-recent"></ol>
+        </div>
+
+        <div class="carta carta-lata">
+          <div class="carta-cap"><h3>Cei mai activi cetățeni</h3><span class="nota-mono">luna aceasta</span></div>
+          <ol class="clasament" id="clasament"></ol>
+        </div>
+        <div class="carta">
+          <div class="carta-cap"><h3>Cum câștigi puncte</h3></div>
+          <ul class="puncte-reguli">
+            <li><span>Raportezi o problemă nouă</span><b>+20</b></li>
+            <li><span>Confirmi o sesizare existentă</span><b>+5</b></li>
+            <li><span>Adaugi un comentariu util</span><b>+2</b></li>
+          </ul>
+          <p class="nota-mono">Punctele deblochează niveluri și insigne în profilul tău.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CUM FUNCȚIONEAZĂ ================= -->
+  <section id="cum" class="sectiune sectiune-alt">
+    <div class="container">
+      <div class="sectiune-cap">
+        <span class="eticheta-mono">// protocol</span>
+        <h2>De la semnal la rezolvare</h2>
+      </div>
+      <ol class="protocol">
+        <li><span class="pas-cod">01</span><h3>Semnalezi</h3><p>Alegi locul pe hartă, categoria și gravitatea. O fotografie ajută echipele să înțeleagă repede problema.</p></li>
+        <li><span class="pas-cod">02</span><h3>Comunitatea confirmă</h3><p>Fiecare „Am văzut și eu” crește prioritatea. O sesizare cu 40 de confirmări nu mai poate fi ignorată.</p></li>
+        <li><span class="pas-cod">03</span><h3>Se preia</h3><p>Statusul trece în „în lucru”. Primești actualizări în cronologia sesizării, dacă o urmărești.</p></li>
+        <li><span class="pas-cod">04</span><h3>Se rezolvă</h3><p>Când problema dispare, sesizarea devine verde și rămâne în istoric, ca dovadă.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ================= QUIZ ================= -->
+  <section id="quiz" class="sectiune">
+    <div class="container quiz-grila">
+      <div class="sectiune-cap">
+        <span class="eticheta-mono">// test rapid</span>
+        <h2>Știi să semnalezi corect?</h2>
+        <p>Cinci întrebări despre cum faci o sesizare utilă și sigură. Fiecare răspuns corect valorează 10 puncte.</p>
+      </div>
+      <div class="terminal">
+        <div class="terminal-cap">
+          <span class="buline" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="nota-mono">quiz.semnal — <span id="progres-quiz">5 întrebări</span></span>
+          <span id="scor">Scor: 0</span>
+        </div>
+        <div class="terminal-bara"><div id="bara-quiz"></div></div>
+        <div class="terminal-corp" id="continut">
+          <p id="intrebare">Apasă START ca să începi.</p>
+          <div id="raspunsuri"></div>
+          <p id="mesaj"></p>
+          <div class="quiz-actiuni">
+            <button type="button" class="btn btn-semnal" id="start">START JOC</button>
+            <button type="button" class="btn btn-semnal" id="urmatoarea" hidden>Următoarea întrebare</button>
+            <button type="button" class="btn btn-contur" id="reia" hidden>Joacă din nou</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ÎNTREBĂRI ================= -->
+  <section id="intrebari" class="sectiune sectiune-alt">
+    <div class="container">
+      <div class="sectiune-cap">
+        <span class="eticheta-mono">// întrebări frecvente</span>
+        <h2>Bine de știut</h2>
+      </div>
+      <div class="acordeon">
+        <details>
+          <summary>Sesizarea mea ajunge automat la primărie?</summary>
+          <p>Nu. Aceasta este o versiune demonstrativă: sesizările rămân pe hartă, iar statusul lor se actualizează aici. Pentru o sesizare oficială, folosește și canalele primăriei tale.</p>
+        </details>
+        <details>
+          <summary>Ce fac dacă problema este periculoasă?</summary>
+          <p>Fire electrice căzute, miros de gaz sau un copac prăbușit peste carosabil: ține-te la distanță și sună la 112. Abia apoi poți adăuga sesizarea pe hartă.</p>
+        </details>
+        <details>
+          <summary>De ce să confirm o sesizare deja existentă?</summary>
+          <p>Confirmările arată câți oameni sunt afectați. O sesizare cu multe confirmări e mai ușor de prioritizat decât zece sesizări separate pentru aceeași problemă.</p>
+        </details>
+        <details>
+          <summary>Ce fotografii pot încărca?</summary>
+          <p>Fotografii clare ale problemei. Evită fețele trecătorilor și numerele de înmatriculare care se pot citi.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SUBSOL ================= -->
+  <footer class="subsol">
+    <div class="container subsol-interior">
+      <div>
+        <span class="logo"><span class="logo-radar" aria-hidden="true"><i></i></span>SEMNAL</span>
+        <p>Versiune demonstrativă. Sesizările nu sunt transmise automat autorităților. Pentru urgențe: <a href="tel:112">112</a>.</p>
+      </div>
+      <div class="subsol-linkuri">
+        <a href="#harta-sectiune">Hartă</a>
+        <a href="#raport">Raport de oraș</a>
+        <a href="#quiz">Quiz</a>
+        <a href="#intrebari">Întrebări</a>
+      </div>
+      <span class="nota-mono">Hărți: Esri, © OpenStreetMap · © 2026 Semnal</span>
+    </div>
+  </footer>
+
+  <!-- ================= PANOURI LATERALE ================= -->
+  <div class="umbra" id="umbra" hidden></div>
+
+  <aside class="panou-lateral" id="panou-detalii" aria-label="Detaliile sesizării" aria-hidden="true">
+    <div id="detalii-continut"></div>
+  </aside>
+
+  <aside class="panou-lateral" id="panou-raport" aria-labelledby="titlu-raport" aria-hidden="true">
+    <form id="form-raport" novalidate>
+      <div class="lateral-cap">
+        <div>
+          <span class="eticheta-mono">// sesizare nouă</span>
+          <h2 id="titlu-raport">Raportează o problemă</h2>
+        </div>
+        <button type="button" class="btn-x" data-inchide aria-label="Închide"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+
+      <div class="lateral-corp">
+        <fieldset class="camp">
+          <span>01 · Categorie</span>
+          <div class="alegeri-categorie" id="alegeri-categorie"></div>
+        </fieldset>
+
+        <div class="camp">
+          <span>02 · Locație</span>
+          <div class="locatie" id="locatie">
+            <span class="locatie-text" id="locatie-text">Nicio locație aleasă</span>
+            <div class="locatie-butoane">
+              <button type="button" class="btn btn-contur mic" id="alege-pe-harta">Alege pe hartă</button>
+              <button type="button" class="btn btn-contur mic" id="locatia-mea">Locația mea</button>
+            </div>
+          </div>
+        </div>
+
+        <label class="camp">
+          <span>03 · Titlu</span>
+          <input name="titlu" required maxlength="70" placeholder="Ex: Groapă adâncă în dreptul trecerii de pietoni">
+        </label>
+
+        <label class="camp">
+          <span>04 · Descriere <em id="contor-descriere">0/300</em></span>
+          <textarea name="descriere" required rows="3" maxlength="300" placeholder="Ce ai observat, de când și de ce e o problemă"></textarea>
+        </label>
+
+        <div class="rand">
+          <label class="camp"><span>05 · Adresă / reper</span><input name="adresa" required placeholder="Ex: Bd. Unirii nr. 45"></label>
+          <label class="camp"><span>06 · Cartier</span><input name="cartier" required placeholder="Ex: Unirii"></label>
+        </div>
+
+        <fieldset class="camp">
+          <span>07 · Gravitate</span>
+          <div class="gravitate-alegeri">
+            <label><input type="radio" name="gravitate" value="1"><span>Scăzută</span></label>
+            <label><input type="radio" name="gravitate" value="2" checked><span>Medie</span></label>
+            <label><input type="radio" name="gravitate" value="3"><span>Ridicată</span></label>
+          </div>
+        </fieldset>
+
+        <label class="camp">
+          <span>08 · Fotografie <em>opțional</em></span>
+          <span class="fisier-zona">
+            <span id="fisier-text">+ Alege o imagine (o micșorăm automat)</span>
+            <input type="file" name="foto" accept="image/*" id="foto">
+          </span>
+          <img id="previzualizare" class="previzualizare hidden" alt="Previzualizarea fotografiei">
+        </label>
+        <p class="eroare" id="eroare-raport" role="alert"></p>
+      </div>
+
+      <div class="lateral-jos">
+        <span class="nota-mono" id="nota-locatie">Alege locația ca să poți trimite.</span>
+        <button type="submit" class="btn btn-semnal" id="trimite">Trimite sesizarea</button>
+      </div>
+    </form>
+  </aside>
+
+  <aside class="panou-lateral" id="panou-profil" aria-label="Profilul tău" aria-hidden="true">
+    <div class="lateral-cap">
+      <div>
+        <span class="eticheta-mono">// profil</span>
+        <h2>Contul tău de cetățean</h2>
+      </div>
+      <button type="button" class="btn-x" data-inchide aria-label="Închide"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="lateral-corp" id="profil-continut"></div>
+  </aside>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
